@@ -1,0 +1,171 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id 'nu.studer.jooq' version '8.0'
+}
+
+group = 'io.github.jtestkit'
+version = '0.9.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withJavadocJar()
+    withSourcesJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+    }
+    test {
+        java {
+            srcDirs = ['src/test/java', 'build/generated-sources/jooq']
+        }
+    }
+}
+
+dependencies {
+    // compileOnly - user provides their own jOOQ version
+    compileOnly 'org.jooq:jooq:3.13.0'
+    
+    // api - transitive dependencies (needed by users)
+    api 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    
+    // compileOnly - optional dependencies
+    compileOnly 'org.testcontainers:testcontainers:1.19.0'
+    compileOnly 'org.slf4j:slf4j-api:2.0.0'
+    
+    // test scope - for testing Joot on latest version
+    testImplementation 'org.jooq:jooq:3.20.10'
+    testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testImplementation 'org.testcontainers:postgresql:1.19.0'
+    testImplementation 'org.testcontainers:junit-jupiter:1.19.0'
+    testImplementation 'org.assertj:assertj-core:3.24.0'
+    testImplementation 'org.postgresql:postgresql:42.7.1'
+    
+    // jOOQ codegen - for DDL database
+    jooqGenerator 'org.jooq:jooq-meta-extensions:3.20.10'
+}
+
+// jOOQ codegen for test schema
+jooq {
+    version = '3.20.10'
+    configurations {
+        test {
+            generateSchemaSourceOnCompilation = false
+            
+            generationTool {
+                generator {
+                    database {
+                        name = 'org.jooq.meta.extensions.ddl.DDLDatabase'
+                        properties {
+                            property {
+                                key = 'scripts'
+                                value = 'src/test/resources/test-schema.sql'
+                            }
+                            property {
+                                key = 'defaultNameCase'
+                                value = 'lower'
+                            }
+                        }
+                    }
+                    generate {
+                        pojos = true
+                        pojosEqualsAndHashCode = true
+                        daos = false
+                        records = true
+                    }
+                    target {
+                        packageName = 'io.github.jtestkit.joot.test.fixtures'
+                        directory = 'build/generated-sources/jooq'
+                    }
+                }
+            }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// Ensure jOOQ generation happens before compiling tests
+tasks.named('compileTestJava') {
+    dependsOn tasks.named('generateTestJooq')
+}
+
+// Maven publishing configuration
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            
+            pom {
+                name = 'Joot'
+                description = 'Lightweight testing library for jOOQ applications with automatic foreign key resolution'
+                url = 'https://github.com/jtestkit/joot'
+                
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        id = 'pdkmn'
+                        name = 'Sergei Podkaminnyi'
+                        email = 'pdkmns@gmail.com'
+                    }
+                }
+                
+                scm {
+                    connection = 'scm:git:git://github.com/jtestkit/joot.git'
+                    developerConnection = 'scm:git:ssh://github.com:jtestkit/joot.git'
+                    url = 'https://github.com/jtestkit/joot'
+                }
+            }
+        }
+    }
+    
+    repositories {
+        maven {
+            name = 'bundleRepo'
+            url = layout.buildDirectory.dir('repo')
+        }
+    }
+}
+
+// Signing configuration
+signing {
+    sign publishing.publications.mavenJava
+}
+
+// Task to create bundle for manual upload to Central Portal
+tasks.register('createMavenCentralBundle', Zip) {
+    dependsOn 'publishMavenJavaPublicationToBundleRepoRepository'
+    archiveFileName = "joot-${version}-bundle.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    
+    from(layout.buildDirectory.dir("repo")) {
+        include "io/github/jtestkit/joot/${version}/**"
+    }
+}
+
+// Javadoc configuration
+javadoc {
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+}

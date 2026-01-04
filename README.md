@@ -1,0 +1,528 @@
+# Joot - jOOQ Test Data Factory
+
+> Lightweight testing library for jOOQ applications with automatic foreign key resolution
+
+[![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://www.oracle.com/java/)
+[![jOOQ](https://img.shields.io/badge/jOOQ-3.13+-blue.svg)](https://www.jooq.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+---
+
+## 🎯 Why Joot?
+
+Testing with databases is hard. Setting up test data is tedious and error-prone:
+
+```java
+// ❌ Traditional approach: 30+ lines of boilerplate
+AuthorRecord author = dsl.newRecord(AUTHOR);
+author.setId(1L);
+author.setName("Test Author");
+author.setEmail("test@example.com");
+author.setBio("Some bio");
+author.setRating(4.5);
+author.setCreatedAt(LocalDateTime.now());
+// ... 10 more fields
+author.insert();
+
+BookRecord book = dsl.newRecord(BOOK);
+book.setId(1L);
+book.setAuthorId(author.getId());  // Manual FK!
+book.setTitle("Test Book");
+book.setIsbn("123-456");
+// ... 15 more fields
+book.insert();
+
+// ✅ With Joot: 1 line, automatic FK resolution
+Book book = ctx.create(BOOK, Book.class).build();
+// author is auto-created, all NOT NULL fields populated, FK wired automatically ✨
+```
+
+**Joot gives you:**
+- ✅ **Zero boilerplate** - focus on what matters in your tests
+- ✅ **Automatic FK resolution** - no manual parent entity creation
+- ✅ **Smart defaults** - generates realistic test data automatically
+- ✅ **Type-safe API** - leverages jOOQ's generated code
+- ✅ **Production-ready** - 97 integration tests, 100% pass rate
+
+---
+
+## 🚀 Quick Start (5 minutes)
+
+### 1. Add Dependency
+
+**Gradle:**
+```gradle
+dependencies {
+    testImplementation 'io.github.jtestkit:joot:0.9.0'
+}
+```
+
+**Maven:**
+```xml
+<dependency>
+    <groupId>io.github.jtestkit</groupId>
+    <artifactId>joot</artifactId>
+    <version>0.9.0</version>
+    <scope>test</scope>
+</dependency>
+```
+
+### 2. Setup in Test
+
+```java
+import io.github.jtestkit.joot.JootContext;
+import org.jooq.DSLContext;
+
+class MyTest {
+    DSLContext dsl = ...; // Your jOOQ DSLContext
+    JootContext ctx = JootContext.create(dsl);
+    
+    @Test
+    void myTest() {
+        // Create entities with zero boilerplate!
+        Author author = ctx.create(AUTHOR, Author.class).build();
+        
+        // Data cleanup is your responsibility
+        // (Use @Transactional, manual DELETE, or your preferred strategy)
+    }
+}
+```
+
+### 3. Start Testing!
+
+```java
+@Test
+void shouldCreateBookWithAuthor() {
+    // ACT: Create book (author auto-created!)
+    Book book = ctx.create(BOOK, Book.class).build();
+    
+    // ASSERT
+    assertThat(book.getAuthorId()).isNotNull();
+    assertThat(book.getTitle()).isNotNull(); // All NOT NULL fields populated
+    
+    // Verify author was created
+    Author author = ctx.get(book.getAuthorId(), AUTHOR, Author.class);
+    assertThat(author).isNotNull();
+}
+```
+
+---
+
+## ✨ Key Features
+
+### 1. Automatic Foreign Key Resolution
+
+No need to manually create parent entities:
+
+```java
+// Creating a book automatically creates its author
+Book book = ctx.create(BOOK, Book.class).build();
+
+// Creating an order automatically creates user AND product
+Order order = ctx.create(ORDER, Order.class).build();
+
+// Even deep hierarchies work automatically
+// Book -> Author -> Publisher -> Address -> Country ✨
+```
+
+### 2. Smart Default Values
+
+All fields get sensible defaults based on type and constraints:
+
+```java
+Book book = ctx.create(BOOK, Book.class).build();
+
+// NOT NULL fields are auto-populated:
+book.getTitle()        // → "title_1"  (field name as prefix!)
+book.getIsbn()         // → "isbn_1"
+book.getAuthorId()     // → 1L (auto-created author)
+book.getPrice()        // → random BigDecimal
+book.getPublishedAt()  // → LocalDateTime.now()
+
+// Enum fields get first value (deterministic)
+order.getStatus()      // → OrderStatus.PENDING (always first from .values())
+
+// UNIQUE fields get unique values automatically
+book.getIsbn()         // → "isbn_1", "isbn_2", "isbn_3" (auto-incremented)
+```
+
+### 3. Explicit Values When Needed
+
+Override defaults for fields that matter in your test:
+
+```java
+Book book = ctx.create(BOOK, Book.class)
+    .set(BOOK.TITLE, "1984")
+    .set(BOOK.PRICE, new BigDecimal("19.99"))
+    .build();
+
+// Only title and price are explicit, everything else auto-generated
+```
+
+### 4. Enum Support (Automatic!)
+
+Enum fields are automatically handled - Joot uses the **first value** from `enum.values()` for deterministic behavior:
+
+```java
+public enum OrderStatus {
+    PENDING,      // ← This one is used automatically
+    CONFIRMED,
+    SHIPPED,
+    DELIVERED
+}
+
+// Automatic enum handling
+Order order = ctx.create(ORDER, Order.class).build();
+assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);  // ✅ Always first value
+
+// Works with jOOQ EnumConverter
+Task task = ctx.create(TASK, Task.class).build();
+assertThat(task.getStatus()).isEqualTo(TaskStatus.PENDING);  // ✅ First enum
+```
+
+**Why first value?**
+- ✅ **Deterministic** - tests behave the same every time
+- ✅ **Predictable** - you always know what to expect
+- ✅ **Debuggable** - no random behavior
+
+**Need a different value?**
+```java
+// Explicit value
+Order shipped = ctx.create(ORDER, Order.class)
+    .set(ORDER.STATUS, OrderStatus.SHIPPED)
+    .build();
+
+// Custom generator
+ctx.registerGenerator(OrderStatus.class, (len, unique) -> OrderStatus.CONFIRMED);
+```
+
+### 5. Nullable Fields Control
+
+```java
+// By default, nullable fields are populated (production-like data)
+Author author = ctx.create(AUTHOR, Author.class).build();
+assertThat(author.getBio()).isNotNull();      // ✅ Generated
+assertThat(author.getWebsite()).isNotNull();  // ✅ Generated
+
+// Disable for minimal data
+Author minimal = ctx.create(AUTHOR, Author.class)
+    .generateNullables(false)
+    .build();
+assertThat(minimal.getBio()).isNull();      // ✅ NULL
+assertThat(minimal.getName()).isNotNull();  // ✅ Still generated (NOT NULL)
+```
+
+### 7. Circular Dependency Handling
+
+Joot intelligently handles circular references:
+
+```java
+// Self-reference: category.parent_id → category.id
+Category root = ctx.create(CATEGORY, Category.class).build();
+assertThat(root.getParentId()).isNotNull(); // Parent auto-created
+
+// Circular FK: users ↔ team
+Team team = ctx.create(TEAM, Team.class).build();
+// Joot breaks the cycle automatically ✅
+```
+
+### 8. Data Access Helpers
+
+```java
+// Retrieve created entities by PK
+Author author = ctx.get(1L, AUTHOR, Author.class);
+```
+
+### 9. Custom Value Generators
+
+Register custom generators for specific fields or types:
+
+```java
+// For a specific field
+ctx.registerGenerator(USER.EMAIL, new EmailGenerator());
+// → "test-1@example.com", "test-2@example.com"
+
+// For a type
+ctx.registerGenerator(LocalDate.class, new LocalDateGenerator());
+
+// For enums (override default)
+ctx.registerGenerator(OrderStatus.class, (len, unique) -> OrderStatus.SHIPPED);
+
+// Per-builder override
+Author author = ctx.create(AUTHOR, Author.class)
+    .withGenerator(AUTHOR.NAME, (len, unique) -> "Custom Name")
+    .build();
+```
+
+### 10. Creating JootContext
+
+`JootContext` is created from a jOOQ `DSLContext`. Choose the approach based on your test lifecycle needs:
+
+#### Approach 1: Per-Test (Recommended)
+
+Create `JootContext` in `@BeforeEach` for test isolation:
+
+```java
+class MyTest extends BaseIntegrationTest {
+    JootContext ctx;
+    
+    @BeforeEach
+    void setup() {
+        ctx = JootContext.create(dsl);
+        // Optional: register custom generators
+        ctx.registerGenerator(MyType.class, (len, unique) -> ...);
+    }
+    
+    @Test
+    void myTest() {
+        Author author = ctx.create(AUTHOR, Author.class).build();
+    }
+}
+```
+
+**Pros:**
+- ✅ Complete isolation between tests
+- ✅ No shared state
+- ✅ Works with any test lifecycle (PER_METHOD, PER_CLASS)
+
+**Cons:**
+- ⚠️ Custom generators need re-registration (but this is fast ~0.01ms)
+
+**Best for:** Most use cases. Context creation is lightweight (~0.1ms).
+
+#### Approach 2: Per-Class (Shared)
+
+Create `JootContext` in `@BeforeAll` when using static `DSLContext`:
+
+```java
+@TestInstance(Lifecycle.PER_CLASS)
+class MyTest extends BaseIntegrationTest {
+    static JootContext ctx;
+    
+    @BeforeAll
+    static void setup() {
+        ctx = JootContext.create(dsl);
+        // Register generators once
+        ctx.registerGenerator(MyType.class, (len, unique) -> ...);
+    }
+    
+    @Test
+    void myTest() {
+        Author author = ctx.create(AUTHOR, Author.class).build();
+    }
+}
+```
+
+**Pros:**
+- ✅ Custom generators registered once
+- ✅ Slightly faster (negligible difference)
+
+**Cons:**
+- ⚠️ **Shared state:** Custom generators registered in one test affect others
+- ⚠️ Requires static `DSLContext` and `PER_CLASS` lifecycle
+
+**Best for:** Tests with common generator configuration that doesn't change.
+
+**⚠️ Important:** `JootContext` is mostly stateless, but `GeneratorRegistry` (custom generators) is shared state. If tests register different generators, use Approach 1.
+
+### 11. Database-Generated Values
+
+Joot respects database-generated values:
+
+```java
+// SERIAL, AUTO_INCREMENT, IDENTITY columns
+Article article = ctx.create(ARTICLE, Article.class).build();
+assertThat(article.getId()).isNotNull();  // Generated by DB
+
+// DEFAULT values (e.g., DEFAULT CURRENT_TIMESTAMP)
+assertThat(article.getPublishedAt()).isNotNull();  // Set by DB
+```
+
+---
+
+## 📚 Complete Example
+
+```java
+class BookServiceTest extends BaseIntegrationTest {
+    
+    private JootContext ctx;
+    
+    @Autowired
+    private BookService bookService;
+    
+    @BeforeEach
+    void setup() {
+        ctx = JootContext.create(dsl);
+    }
+    
+    @Test
+    void shouldPublishBook() {
+        // ARRANGE: Create book with specific title
+        Book book = ctx.create(BOOK, Book.class)
+            .set(BOOK.TITLE, "1984")
+            .set(BOOK.PUBLISHED, false)
+            .build();
+        // Author, publisher, etc. auto-created ✨
+        
+        // ACT
+        bookService.publish(book.getId());
+        
+        // ASSERT
+        Book updated = ctx.get(book.getId(), BOOK, Book.class);
+        assertThat(updated.getPublished()).isTrue();
+    }
+    
+    @Test
+    void shouldFindBooksByAuthor() {
+        // ARRANGE: Create author with multiple books
+        Author author = ctx.create(AUTHOR, Author.class).build();
+        
+        ctx.create(BOOK, Book.class)
+            .set(BOOK.AUTHOR_ID, author.getId())
+            .set(BOOK.TITLE, "Book 1")
+            .build();
+            
+        ctx.create(BOOK, Book.class)
+            .set(BOOK.AUTHOR_ID, author.getId())
+            .set(BOOK.TITLE, "Book 2")
+            .build();
+        
+        // ACT
+        List<Book> books = bookService.findByAuthor(author.getId());
+        
+        // ASSERT
+        assertThat(books).hasSize(2);
+        assertThat(books).extracting(Book::getTitle)
+            .containsExactlyInAnyOrder("Book 1", "Book 2");
+    }
+}
+```
+
+---
+
+## 🎨 Built-in Generators
+
+Joot comes with smart generators for common types:
+
+| Type | Example Output | Notes |
+|------|----------------|-------|
+| `String` | `"name_1"`, `"email_2"` | Uses field name as prefix |
+| `Integer`/`Long` | `1`, `2`, `3` | Auto-incremented |
+| `UUID` | `UUID.randomUUID()` | Unique UUIDs |
+| `Boolean` | `true`/`false` | Random |
+| `LocalDateTime` | `LocalDateTime.now()` | Current timestamp |
+| `LocalDate` | `LocalDate.now()` | Current date |
+| `BigDecimal` | Random value | Suitable for prices |
+| **`Enum`** | **First value** | **`enum.values()[0]` (deterministic)** |
+
+### Adaptive String Generation
+
+Strings adapt to column constraints:
+
+```java
+// VARCHAR(5)  → "a1", "b2", "c3"
+// VARCHAR(10) → "n1", "e2" (first char + counter)
+// VARCHAR(20) → "name_1", "title_2"
+// VARCHAR(255) → "author_name_12345678"
+// TEXT → "bio_1", "description_2"
+
+// UNIQUE fields get unique values automatically
+// author.email = "email_1", "email_2", "email_3"
+```
+
+---
+
+## 🛠️ API Reference
+
+### JootContext
+
+```java
+// Create context
+JootContext ctx = JootContext.create(dsl);
+
+// Create entities
+<T> T create(Table<?> table, Class<T> pojoClass).build();
+<R extends Record> R createRecord(Table<R> table).build();
+
+// Data access
+<T> T get(Object pk, Table<?> table, Class<T> pojoClass);
+
+// Custom generators
+<T> void registerGenerator(Field<T> field, ValueGenerator<T> generator);
+<T> void registerGenerator(Class<T> type, ValueGenerator<T> generator);
+```
+
+### PojoBuilder / RecordBuilder
+
+```java
+// Set explicit values
+builder.set(FIELD, value)
+
+// Control nullable generation
+builder.generateNullables(boolean)
+
+// Per-builder generator
+builder.withGenerator(FIELD, generator)
+
+// Build
+T build()
+```
+
+---
+
+## 🔧 Requirements
+
+- **Java:** 17+
+- **jOOQ:** 3.13+
+- **Database:** Any jOOQ-supported database (PostgreSQL, MySQL, H2, etc.)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development Setup
+
+```bash
+git clone https://github.com/jtestkit/joot.git
+cd joot
+./gradlew test
+```
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details
+
+---
+
+## 🙏 Acknowledgments
+
+- Built on top of [jOOQ](https://www.jooq.org/) - excellent type-safe SQL library
+- Inspired by [TestContainers](https://www.testcontainers.org/) - great testing philosophy
+- Special thanks to the jOOQ community
+
+---
+
+## 🎯 Philosophy
+
+**Joot is designed with these principles:**
+
+1. **Zero boilerplate** - tests should focus on business logic, not data setup
+2. **Production-like data** - tests with realistic data catch more bugs
+3. **Type-safety** - leverage jOOQ's compile-time safety
+4. **Simplicity** - one dependency, zero configuration
+5. **Flexibility** - sensible defaults, full control when needed
+
+---
+
+## 💬 Support
+
+- **Issues:** [GitHub Issues](https://github.com/jtestkit/joot/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/jtestkit/joot/discussions)
+
+---
+
+**Happy Testing!** 🚀
