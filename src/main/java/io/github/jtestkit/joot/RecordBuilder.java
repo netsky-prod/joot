@@ -55,8 +55,18 @@ public interface RecordBuilder<R extends Record> {
     <T> RecordBuilder<R> withGenerator(Field<T> field, ValueGenerator<T> generator);
     
     /**
+     * Activates a named trait from the factory definition.
+     * Multiple traits can be activated and they compose in order.
+     *
+     * @param traitName the name of the trait to activate
+     * @return this builder for chaining
+     * @throws IllegalArgumentException if no definition exists for this table or trait name is unknown
+     */
+    RecordBuilder<R> trait(String traitName);
+
+    /**
      * Creates the entity in the database and returns the Record.
-     * 
+     *
      * @return the created Record with all fields populated (including generated PKs)
      */
     R build();

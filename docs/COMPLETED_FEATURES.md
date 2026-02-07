@@ -863,19 +863,81 @@ Book book = ctx.create(BOOK, Book.class).build();
 
 ---
 
+## ✅ Фаза 9: Factory Definitions + Traits
+
+### 9.1 Factory Definitions
+```java
+ctx.define(AUTHOR, f -> {
+    f.set(AUTHOR.NAME, "Isaac Asimov");
+    f.set(AUTHOR.COUNTRY, "US");
+});
+
+Author author = ctx.create(AUTHOR, Author.class).build();
+// author.getName() == "Isaac Asimov"
+```
+- Определение дефолтных значений для таблицы
+- Определение генераторов внутри фабрики (`f.withGenerator()`)
+- Переопределение через `.set()` на билдере
+- Работает с PojoBuilder и RecordBuilder
+- Обратная совместимость: без `define()` всё работает как раньше
+
+### 9.2 Traits
+```java
+ctx.define(AUTHOR, f -> {
+    f.set(AUTHOR.NAME, "Default");
+    f.set(AUTHOR.COUNTRY, "US");
+    f.trait("european", t -> t.set(AUTHOR.COUNTRY, "DE"));
+    f.trait("renamed", t -> t.set(AUTHOR.NAME, "Special"));
+});
+
+Author eu = ctx.create(AUTHOR, Author.class).trait("european").build();
+// eu.getCountry() == "DE"
+```
+- Именованные вариации поверх базовой фабрики
+- Композиция нескольких трейтов (`.trait("a").trait("b")`)
+- Порядок: последний трейт побеждает при конфликте полей
+- Явный `.set()` всегда побеждает трейт
+- Поддержка callbacks (`beforeCreate`, `afterCreate`) в трейтах
+
+### Приоритет значений (обновлённый)
+1. Explicit `.set()` (highest)
+2. Per-builder `.withGenerator()`
+3. Trait overrides (in activation order)
+4. Definition defaults
+5. Definition generators
+6. Global field-specific generator
+7. Global type-based generator
+8. Enum handling
+9. IllegalArgumentException
+
+**Тесты:** 13 тестов
+- `FactoryDefinitionTest` (6): define+create, override, без define, RecordBuilder, FK auto-creation, generators
+- `TraitCompositionTest` (7): single trait, multiple traits, order, explicit override, RecordBuilder, FK, без трейтов
+
+**Файлы:**
+- `src/main/java/io/github/jtestkit/joot/Trait.java`
+- `src/main/java/io/github/jtestkit/joot/TraitBuilder.java`
+- `src/main/java/io/github/jtestkit/joot/FactoryDefinition.java`
+- `src/main/java/io/github/jtestkit/joot/FactoryDefinitionBuilder.java`
+- `src/main/java/io/github/jtestkit/joot/FactoryDefinitionRegistry.java`
+- `src/main/java/io/github/jtestkit/joot/JootContext.java` (добавлен `define()`)
+- `src/main/java/io/github/jtestkit/joot/JootContextImpl.java` (registry + implement)
+- `src/main/java/io/github/jtestkit/joot/RecordBuilder.java` (добавлен `trait()`)
+- `src/main/java/io/github/jtestkit/joot/RecordBuilderImpl.java` (resolveDefinitionDefaults + callbacks)
+- `src/main/java/io/github/jtestkit/joot/PojoBuilder.java` (добавлен `trait()`)
+- `src/main/java/io/github/jtestkit/joot/PojoBuilderImpl.java` (transfer traits)
+
+---
+
 ## 🎯 Следующие фазы
 
-### ⏳ v2.0: Продвинутые фичи (опционально)
-- Composite primary keys
-- Transaction support
-- Batch creation
-- Templates/Fixtures
+### ⏳ Фаза 10: Sequences, Callbacks, Batch Creation
+- `ctx.sequence(FIELD, n -> ...)` — именованные последовательности
+- `beforeCreate` / `afterCreate` callbacks в фабриках
+- `.times(n)` — batch creation
 
-### ⏳ Фаза 9: Полировка (опционально)
-- README с примерами
-- JavaDoc для всех public API
-- GitHub Actions CI/CD
-- Maven Central публикация
-
-**Проект готов к v1.0.0!** 🚀
+### ⏳ Фаза 11: Factory Inheritance, Build Strategies, Transients
+- Named factories с наследованием (`parent`)
+- `buildWithoutInsert()` / `buildAttributes()` — стратегии создания
+- Transient attributes для callbacks
 

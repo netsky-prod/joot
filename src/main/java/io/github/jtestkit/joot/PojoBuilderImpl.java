@@ -5,7 +5,9 @@ import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.Table;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,6 +26,7 @@ class PojoBuilderImpl<P> implements PojoBuilder<P> {
     private final CreationChain creationChain;
     private final Map<Field<?>, Object> explicitValues = new HashMap<>();
     private final Map<Field<?>, ValueGenerator<?>> perBuilderGenerators = new HashMap<>();
+    private final List<String> activeTraits = new ArrayList<>();
     private Boolean shouldGenerateNullables = null;  // null = use context default
     
     PojoBuilderImpl(DSLContext dsl, Table<?> table, Class<P> pojoClass, 
@@ -58,6 +61,12 @@ class PojoBuilderImpl<P> implements PojoBuilder<P> {
         perBuilderGenerators.put(field, generator);
         return this;
     }
+
+    @Override
+    public PojoBuilder<P> trait(String traitName) {
+        activeTraits.add(traitName);
+        return this;
+    }
     
     @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -85,6 +94,11 @@ class PojoBuilderImpl<P> implements PojoBuilder<P> {
         // Transfer all per-builder generators to RecordBuilder
         for (Map.Entry<Field<?>, ValueGenerator<?>> entry : perBuilderGenerators.entrySet()) {
             recordBuilder.withGenerator((Field) entry.getKey(), entry.getValue());
+        }
+
+        // Transfer active traits to RecordBuilder
+        for (String traitName : activeTraits) {
+            recordBuilder.trait(traitName);
         }
         
         // Build the Record

@@ -7,6 +7,7 @@ import org.jooq.Table;
 import org.jooq.TableField;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Default implementation of JootContext.
@@ -18,6 +19,7 @@ class JootContextImpl implements JootContext {
     private final DSLContext dsl;
     private final CyclicDependencyResolver cyclicResolver;
     private final GeneratorRegistry generatorRegistry;
+    private final FactoryDefinitionRegistry definitionRegistry;
     private boolean generateNullablesGlobal = true;  // Default: true (production-like objects)
     
     /**
@@ -29,6 +31,7 @@ class JootContextImpl implements JootContext {
         this.dsl = Objects.requireNonNull(dsl, "DSLContext must not be null");
         this.cyclicResolver = new CyclicDependencyResolver(dsl);
         this.generatorRegistry = new GeneratorRegistry();
+        this.definitionRegistry = new FactoryDefinitionRegistry();
     }
     
     @Override
@@ -59,6 +62,14 @@ class JootContextImpl implements JootContext {
      */
     GeneratorRegistry getGeneratorRegistry() {
         return generatorRegistry;
+    }
+
+    /**
+     * Package-private getter for definition registry.
+     * Used by builders for resolving factory definitions.
+     */
+    FactoryDefinitionRegistry getDefinitionRegistry() {
+        return definitionRegistry;
     }
     
     @Override
@@ -109,6 +120,14 @@ class JootContextImpl implements JootContext {
     @Override
     public <T> JootContext registerGenerator(Class<T> type, ValueGenerator<T> generator) {
         generatorRegistry.registerTypeGenerator(type, generator);
+        return this;
+    }
+
+    @Override
+    public <R extends Record> JootContext define(Table<R> table, Consumer<FactoryDefinitionBuilder<R>> config) {
+        FactoryDefinitionBuilder<R> builder = new FactoryDefinitionBuilder<>();
+        config.accept(builder);
+        definitionRegistry.register(table, builder.build(table));
         return this;
     }
 }

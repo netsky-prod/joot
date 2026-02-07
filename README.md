@@ -42,7 +42,8 @@ Book book = ctx.create(BOOK, Book.class).build();
 - ✅ **Automatic FK resolution** - no manual parent entity creation
 - ✅ **Smart defaults** - generates realistic test data automatically
 - ✅ **Type-safe API** - leverages jOOQ's generated code
-- ✅ **Production-ready** - 97 integration tests, 100% pass rate
+- ✅ **Factory definitions & traits** - reusable templates with composable variations
+- ✅ **Production-ready** - 110 integration tests, 100% pass rate
 
 ---
 
@@ -233,7 +234,65 @@ Team team = ctx.create(TEAM, Team.class).build();
 Author author = ctx.get(1L, AUTHOR, Author.class);
 ```
 
-### 9. Custom Value Generators
+### 9. Factory Definitions
+
+Define reusable defaults for your entities:
+
+```java
+// Define once
+ctx.define(AUTHOR, f -> {
+    f.set(AUTHOR.NAME, "Isaac Asimov");
+    f.set(AUTHOR.COUNTRY, "US");
+});
+
+// Use everywhere — defaults applied automatically
+Author author = ctx.create(AUTHOR, Author.class).build();
+assertThat(author.getName()).isEqualTo("Isaac Asimov");
+
+// Override when needed
+Author other = ctx.create(AUTHOR, Author.class)
+    .set(AUTHOR.NAME, "Arthur Clarke")
+    .build();
+assertThat(other.getName()).isEqualTo("Arthur Clarke");
+assertThat(other.getCountry()).isEqualTo("US"); // from definition
+```
+
+### 10. Traits
+
+Named variations that compose on top of definitions:
+
+```java
+ctx.define(AUTHOR, f -> {
+    f.set(AUTHOR.NAME, "Default Author");
+    f.set(AUTHOR.COUNTRY, "US");
+
+    f.trait("european", t -> t.set(AUTHOR.COUNTRY, "DE"));
+    f.trait("renamed", t -> t.set(AUTHOR.NAME, "Special Author"));
+});
+
+// Apply single trait
+Author eu = ctx.create(AUTHOR, Author.class)
+    .trait("european")
+    .build();
+assertThat(eu.getCountry()).isEqualTo("DE");
+
+// Compose multiple traits (applied in order)
+Author special = ctx.create(AUTHOR, Author.class)
+    .trait("european")
+    .trait("renamed")
+    .build();
+assertThat(special.getCountry()).isEqualTo("DE");
+assertThat(special.getName()).isEqualTo("Special Author");
+
+// Explicit .set() always wins over traits
+Author jp = ctx.create(AUTHOR, Author.class)
+    .trait("european")
+    .set(AUTHOR.COUNTRY, "JP")
+    .build();
+assertThat(jp.getCountry()).isEqualTo("JP");
+```
+
+### 11. Custom Value Generators
 
 Register custom generators for specific fields or types:
 
@@ -254,7 +313,7 @@ Author author = ctx.create(AUTHOR, Author.class)
     .build();
 ```
 
-### 10. Creating JootContext
+### 12. Creating JootContext
 
 `JootContext` is created from a jOOQ `DSLContext`. Choose the approach based on your test lifecycle needs:
 
@@ -325,7 +384,7 @@ class MyTest extends BaseIntegrationTest {
 
 **⚠️ Important:** `JootContext` is mostly stateless, but `GeneratorRegistry` (custom generators) is shared state. If tests register different generators, use Approach 1.
 
-### 11. Database-Generated Values
+### 13. Database-Generated Values
 
 Joot respects database-generated values:
 
@@ -440,6 +499,9 @@ Strings adapt to column constraints:
 // Create context
 JootContext ctx = JootContext.create(dsl);
 
+// Factory definitions
+ctx.define(TABLE, f -> { ... });
+
 // Create entities
 <T> T create(Table<?> table, Class<T> pojoClass).build();
 <R extends Record> R createRecord(Table<R> table).build();
@@ -457,6 +519,9 @@ JootContext ctx = JootContext.create(dsl);
 ```java
 // Set explicit values
 builder.set(FIELD, value)
+
+// Apply trait from definition
+builder.trait("traitName")
 
 // Control nullable generation
 builder.generateNullables(boolean)
