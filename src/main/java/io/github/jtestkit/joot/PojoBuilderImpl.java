@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Default implementation of PojoBuilder.
@@ -67,7 +68,39 @@ class PojoBuilderImpl<P> implements PojoBuilder<P> {
         activeTraits.add(traitName);
         return this;
     }
-    
+
+    @Override
+    public List<P> times(int count) {
+        List<P> results = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            results.add(cloneConfiguration().build());
+        }
+        return results;
+    }
+
+    @Override
+    public List<P> times(int count, BiConsumer<PojoBuilder<P>, Integer> customizer) {
+        List<P> results = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            PojoBuilderImpl<P> fresh = cloneConfiguration();
+            customizer.accept(fresh, i);
+            results.add(fresh.build());
+        }
+        return results;
+    }
+
+    private PojoBuilderImpl<P> cloneConfiguration() {
+        PojoBuilderImpl<P> clone = new PojoBuilderImpl<>(dsl, table, pojoClass, jootContext, creationChain,
+                ((JootContextImpl) jootContext).getGenerateNullablesGlobal());
+        if (shouldGenerateNullables != null) {
+            clone.shouldGenerateNullables = this.shouldGenerateNullables;
+        }
+        clone.explicitValues.putAll(this.explicitValues);
+        clone.perBuilderGenerators.putAll(this.perBuilderGenerators);
+        clone.activeTraits.addAll(this.activeTraits);
+        return clone;
+    }
+
     @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
     public P build() {

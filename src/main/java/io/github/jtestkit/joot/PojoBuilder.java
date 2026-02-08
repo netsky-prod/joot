@@ -2,6 +2,9 @@ package io.github.jtestkit.joot;
 
 import org.jooq.Field;
 
+import java.util.List;
+import java.util.function.BiConsumer;
+
 /**
  * Builder for creating test entities as POJOs.
  * Provides fluent API for setting field values and building entities.
@@ -55,6 +58,23 @@ public interface PojoBuilder<P> {
      * @throws IllegalArgumentException if no definition exists for this table or trait name is unknown
      */
     PojoBuilder<P> trait(String traitName);
+
+    /**
+     * Creates multiple entities, returning them as a list.
+     *
+     * @param count the number of entities to create
+     * @return list of created POJOs
+     */
+    List<P> times(int count);
+
+    /**
+     * Creates multiple entities with per-item customization.
+     *
+     * @param count the number of entities to create
+     * @param customizer receives the builder and the 0-based index for each entity
+     * @return list of created POJOs
+     */
+    List<P> times(int count, BiConsumer<PojoBuilder<P>, Integer> customizer);
 
     /**
      * Builds the entity, inserts it into the database, and returns the POJO.

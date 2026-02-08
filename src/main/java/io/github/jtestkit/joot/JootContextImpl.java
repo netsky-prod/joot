@@ -7,7 +7,9 @@ import org.jooq.Table;
 import org.jooq.TableField;
 
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.LongFunction;
 
 /**
  * Default implementation of JootContext.
@@ -120,6 +122,13 @@ class JootContextImpl implements JootContext {
     @Override
     public <T> JootContext registerGenerator(Class<T> type, ValueGenerator<T> generator) {
         generatorRegistry.registerTypeGenerator(type, generator);
+        return this;
+    }
+
+    @Override
+    public <T> JootContext sequence(Field<T> field, LongFunction<T> sequenceFn) {
+        AtomicLong counter = new AtomicLong(1);
+        registerGenerator(field, (maxLen, isUnique) -> sequenceFn.apply(counter.getAndIncrement()));
         return this;
     }
 

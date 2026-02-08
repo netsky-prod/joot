@@ -292,7 +292,78 @@ Author jp = ctx.create(AUTHOR, Author.class)
 assertThat(jp.getCountry()).isEqualTo("JP");
 ```
 
-### 11. Custom Value Generators
+### 11. Sequences
+
+Predictable, auto-incrementing values for fields:
+
+```java
+ctx.sequence(AUTHOR.EMAIL, n -> "author" + n + "@test.com");
+
+Author a1 = ctx.create(AUTHOR, Author.class).build();
+Author a2 = ctx.create(AUTHOR, Author.class).build();
+// a1.getEmail() == "author1@test.com"
+// a2.getEmail() == "author2@test.com"
+
+// Works with any type
+ctx.sequence(BOOK.PAGES, n -> (int) (n * 100));
+// 100, 200, 300, ...
+```
+
+### 12. Lifecycle Callbacks
+
+Execute logic before/after entity insertion:
+
+```java
+ctx.define(AUTHOR, f -> {
+    f.set(AUTHOR.NAME, "Author");
+
+    f.beforeCreate(record -> {
+        // Modify record before INSERT
+        record.set(AUTHOR.NAME, record.get(AUTHOR.NAME).toUpperCase());
+    });
+
+    f.afterCreate(record -> {
+        // Create related entities after INSERT
+        Object authorId = record.get(AUTHOR.ID);
+        ctx.create(BOOK, Book.class)
+            .set(BOOK.AUTHOR_ID, (UUID) authorId)
+            .build();
+    });
+});
+```
+
+Trait callbacks compose with base callbacks (base runs first, then trait):
+
+```java
+ctx.define(AUTHOR, f -> {
+    f.afterCreate(r -> log("base"));
+    f.trait("logged", t -> t.afterCreate(r -> log("trait")));
+});
+
+ctx.create(AUTHOR, Author.class).trait("logged").build();
+// logs: "base", then "trait"
+```
+
+### 13. Batch Creation
+
+Create multiple entities at once with `.times()`:
+
+```java
+// Create 5 authors
+List<Author> authors = ctx.create(AUTHOR, Author.class).times(5);
+
+// With per-item customization
+List<Author> authors = ctx.create(AUTHOR, Author.class)
+    .times(3, (builder, i) -> builder.set(AUTHOR.NAME, "Author " + i));
+// "Author 0", "Author 1", "Author 2"
+
+// Works with traits and definitions
+List<Author> europeans = ctx.create(AUTHOR, Author.class)
+    .trait("european")
+    .times(10);
+```
+
+### 14. Custom Value Generators
 
 Register custom generators for specific fields or types:
 
@@ -313,7 +384,7 @@ Author author = ctx.create(AUTHOR, Author.class)
     .build();
 ```
 
-### 12. Creating JootContext
+### 15. Creating JootContext
 
 `JootContext` is created from a jOOQ `DSLContext`. Choose the approach based on your test lifecycle needs:
 
@@ -384,7 +455,7 @@ class MyTest extends BaseIntegrationTest {
 
 **⚠️ Important:** `JootContext` is mostly stateless, but `GeneratorRegistry` (custom generators) is shared state. If tests register different generators, use Approach 1.
 
-### 13. Database-Generated Values
+### 16. Database-Generated Values
 
 Joot respects database-generated values:
 
@@ -502,6 +573,9 @@ JootContext ctx = JootContext.create(dsl);
 // Factory definitions
 ctx.define(TABLE, f -> { ... });
 
+// Sequences
+ctx.sequence(FIELD, n -> "value" + n);
+
 // Create entities
 <T> T create(Table<?> table, Class<T> pojoClass).build();
 <R extends Record> R createRecord(Table<R> table).build();
@@ -528,6 +602,10 @@ builder.generateNullables(boolean)
 
 // Per-builder generator
 builder.withGenerator(FIELD, generator)
+
+// Batch creation
+List<T> times(int count)
+List<T> times(int count, (builder, index) -> { ... })
 
 // Build
 T build()

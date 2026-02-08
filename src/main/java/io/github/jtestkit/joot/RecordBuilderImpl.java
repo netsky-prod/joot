@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -69,6 +70,38 @@ class RecordBuilderImpl<R extends Record> implements RecordBuilder<R> {
     public RecordBuilder<R> trait(String traitName) {
         activeTraits.add(traitName);
         return this;
+    }
+
+    @Override
+    public List<R> times(int count) {
+        List<R> results = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            results.add(cloneConfiguration().build());
+        }
+        return results;
+    }
+
+    @Override
+    public List<R> times(int count, BiConsumer<RecordBuilder<R>, Integer> customizer) {
+        List<R> results = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            RecordBuilderImpl<R> fresh = cloneConfiguration();
+            customizer.accept(fresh, i);
+            results.add(fresh.build());
+        }
+        return results;
+    }
+
+    /**
+     * Creates a fresh builder with the same configuration.
+     * Each clone gets its own copy of explicitValues so build() doesn't leak state.
+     */
+    private RecordBuilderImpl<R> cloneConfiguration() {
+        RecordBuilderImpl<R> clone = new RecordBuilderImpl<>(dsl, table, jootContext, creationChain, shouldGenerateNullables);
+        clone.explicitValues.putAll(this.explicitValues);
+        clone.perBuilderGenerators.putAll(this.perBuilderGenerators);
+        clone.activeTraits.addAll(this.activeTraits);
+        return clone;
     }
 
     @Override

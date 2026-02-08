@@ -929,12 +929,55 @@ Author eu = ctx.create(AUTHOR, Author.class).trait("european").build();
 
 ---
 
-## 🎯 Следующие фазы
+## ✅ Фаза 10: Sequences, Callbacks, Batch Creation
 
-### ⏳ Фаза 10: Sequences, Callbacks, Batch Creation
-- `ctx.sequence(FIELD, n -> ...)` — именованные последовательности
-- `beforeCreate` / `afterCreate` callbacks в фабриках
-- `.times(n)` — batch creation
+### 10.1 Sequences
+```java
+ctx.sequence(AUTHOR.EMAIL, n -> "author" + n + "@test.com");
+// "author1@test.com", "author2@test.com", ...
+```
+- Sugar over `registerGenerator()` с AtomicLong counter
+- Начинается с 1, автоинкремент
+- Работает с любым типом (String, Integer, etc.)
+
+### 10.2 Lifecycle Callbacks
+```java
+ctx.define(AUTHOR, f -> {
+    f.beforeCreate(record -> { /* до INSERT */ });
+    f.afterCreate(record -> { /* после INSERT, с PK */ });
+});
+```
+- `beforeCreate` — модификация Record перед INSERT
+- `afterCreate` — создание связанных сущностей, логирование
+- Trait callbacks compose с base (base first, then trait)
+
+### 10.3 Batch Creation
+```java
+List<Author> authors = ctx.create(AUTHOR, Author.class).times(5);
+List<Author> custom = ctx.create(AUTHOR, Author.class)
+    .times(3, (builder, i) -> builder.set(AUTHOR.NAME, "Author " + i));
+```
+- `times(count)` — создание N сущностей
+- `times(count, customizer)` — с кастомизацией per-item (index 0-based)
+- Каждая итерация — fresh builder через `cloneConfiguration()`
+- Работает с define(), traits, FK auto-creation
+
+**Тесты:** 16 тестов
+- `SequenceGeneratorTest` (4): sequential values, override, with define, integer fields
+- `CallbackTest` (5): beforeCreate, afterCreate, create children, trait+base compose, no define
+- `BatchCreationTest` (7): times(5), RecordBuilder, customizer, define, trait, FK, times(1)
+
+**Файлы:**
+- `src/main/java/io/github/jtestkit/joot/JootContext.java` (добавлен `sequence()`)
+- `src/main/java/io/github/jtestkit/joot/JootContextImpl.java` (реализация sequence)
+- `src/main/java/io/github/jtestkit/joot/RecordBuilder.java` (добавлен `times()`)
+- `src/main/java/io/github/jtestkit/joot/RecordBuilderImpl.java` (реализация times + cloneConfiguration)
+- `src/main/java/io/github/jtestkit/joot/PojoBuilder.java` (добавлен `times()`)
+- `src/main/java/io/github/jtestkit/joot/PojoBuilderImpl.java` (реализация times + cloneConfiguration)
+
+---
+
+## 🎯 Следующие фазы
 
 ### ⏳ Фаза 11: Factory Inheritance, Build Strategies, Transients
 - Named factories с наследованием (`parent`)

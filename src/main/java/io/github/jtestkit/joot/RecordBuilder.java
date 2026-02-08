@@ -3,6 +3,9 @@ package io.github.jtestkit.joot;
 import org.jooq.Field;
 import org.jooq.Record;
 
+import java.util.List;
+import java.util.function.BiConsumer;
+
 /**
  * Fluent builder for creating jOOQ Record entities.
  * Alternative to PojoBuilder for cases when working directly with jOOQ Records is preferred.
@@ -63,6 +66,23 @@ public interface RecordBuilder<R extends Record> {
      * @throws IllegalArgumentException if no definition exists for this table or trait name is unknown
      */
     RecordBuilder<R> trait(String traitName);
+
+    /**
+     * Creates multiple entities, returning them as a list.
+     *
+     * @param count the number of entities to create
+     * @return list of created records
+     */
+    List<R> times(int count);
+
+    /**
+     * Creates multiple entities with per-item customization.
+     *
+     * @param count the number of entities to create
+     * @param customizer receives the builder and the 0-based index for each entity
+     * @return list of created records
+     */
+    List<R> times(int count, BiConsumer<RecordBuilder<R>, Integer> customizer);
 
     /**
      * Creates the entity in the database and returns the Record.

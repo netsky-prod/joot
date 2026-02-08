@@ -108,5 +108,16 @@ public interface JootContext {
      * @return this context for chaining
      */
     <R extends Record> JootContext define(Table<R> table, Consumer<FactoryDefinitionBuilder<R>> config);
+
+    /**
+     * Registers a sequence generator for a field.
+     * The function receives an incrementing long value starting from 1.
+     *
+     * @param field the field to generate sequence values for
+     * @param sequenceFn function that converts sequence number to field value
+     * @param <T> the field type
+     * @return this context for chaining
+     */
+    <T> JootContext sequence(org.jooq.Field<T> field, java.util.function.LongFunction<T> sequenceFn);
 }
 
